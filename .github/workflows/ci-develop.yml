@@ -1,0 +1,103 @@
+name: CI Develop
+
+on:
+  push:
+    branches:
+      - develop
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Environment
+        run: echo "Setting up environment..."
+
+      - name: Install dependencies
+        run: echo "Installing dependencies..."
+
+      - name: Run Build and Tests
+        run: |
+          chmod +x .github/scripts/check_test_success.sh
+          .github/scripts/check_test_success.sh 'echo "Running tests..." && true'
+
+  calculate-version-and-release:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Calculate Next Version
+        id: semver
+        run: |
+          # Get the latest tag, default to 0.0.0
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          echo "Latest tag: $LATEST_TAG"
+
+          # Remove 'v' prefix if exists
+          VERSION=${LATEST_TAG#v}
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          # Get last commit message
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "Commit message: $COMMIT_MSG"
+
+          if [[ "$COMMIT_MSG" == *"BREAKING CHANGE"* ]] || [[ "$COMMIT_MSG" =~ [a-z]+\!: ]]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif [[ "$COMMIT_MSG" == "feat:"* ]]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "New version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release Branch and PR
+        run: |
+          NEW_VERSION=${{ steps.semver.outputs.new_version }}
+          RELEASE_BRANCH="release/$NEW_VERSION"
+
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          # Create release branch from main
+          git fetch origin main:main
+          git checkout main
+          git checkout -b "$RELEASE_BRANCH"
+          git push origin "$RELEASE_BRANCH"
+
+          # Only create PR if it doesn't already exist
+          PR_EXISTS=$(gh pr list --head develop --base "$RELEASE_BRANCH" --json number | jq 'length > 0')
+
+          if [ "$PR_EXISTS" = "false" ]; then
+            # Create PR from develop to release branch
+            gh pr create \
+              --base "$RELEASE_BRANCH" \
+              --head develop \
+              --title "Release $NEW_VERSION" \
+              --body "Automated release PR from develop to $RELEASE_BRANCH."
+          else
+            echo "Pull Request to $RELEASE_BRANCH already exists."
+          fi

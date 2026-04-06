@@ -1,0 +1,57 @@
+name: CI Release
+
+on:
+  push:
+    branches:
+      - 'release/*'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  validate-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Environment
+        run: echo "Setting up environment..."
+
+      - name: Install dependencies
+        run: echo "Installing dependencies..."
+
+      - name: Run Build and Tests
+        run: |
+          chmod +x .github/scripts/check_test_success.sh
+          .github/scripts/check_test_success.sh 'echo "Running tests..." && true'
+
+  create-pr-to-main:
+    needs: validate-release
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Create PR to main
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+
+          # Only create PR if it doesn't already exist
+          PR_EXISTS=$(gh pr list --head "$BRANCH_NAME" --base main --json number | jq 'length > 0')
+
+          if [ "$PR_EXISTS" = "false" ]; then
+            gh pr create \
+              --base main \
+              --head "$BRANCH_NAME" \
+              --title "Release: $BRANCH_NAME" \
+              --body "Automated release PR from $BRANCH_NAME to main."
+          else
+            echo "Pull Request to main already exists."
+          fi

@@ -1,0 +1,57 @@
+name: CI Feature
+
+on:
+  push:
+    branches:
+      - 'feature/*'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Environment
+        # Placeholder for environment setup (e.g., actions/setup-python@v5)
+        run: echo "Setting up environment..."
+
+      - name: Install dependencies
+        run: echo "Installing dependencies..."
+
+      - name: Run Build and Tests
+        run: |
+          chmod +x .github/scripts/check_test_success.sh
+          # Replace 'echo "Running tests..." && true' with actual test command
+          .github/scripts/check_test_success.sh 'echo "Running tests..." && true'
+
+  create-pr:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Create Pull Request to develop
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          PR_EXISTS=$(gh pr list --head "$BRANCH_NAME" --base develop --json number | jq 'length > 0')
+
+          if [ "$PR_EXISTS" = "false" ]; then
+            gh pr create \
+              --base develop \
+              --head "$BRANCH_NAME" \
+              --title "Automated PR: $BRANCH_NAME -> develop" \
+              --body "This PR was automatically created by the CI pipeline after successful build and tests."
+          else
+            echo "Pull Request already exists."
+          fi

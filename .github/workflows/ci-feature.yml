@@ -47,14 +47,25 @@ jobs:
       - name: Create Pull Request to develop
         run: |
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          PR_EXISTS=$(gh pr list --head "$BRANCH_NAME" --base develop --json number | jq 'length > 0')
 
-          if [ "$PR_EXISTS" = "false" ]; then
-            gh pr create \
-              --base develop \
-              --head "$BRANCH_NAME" \
-              --title "Automated PR: $BRANCH_NAME -> develop" \
-              --body "This PR was automatically created by the CI pipeline after successful build and tests."
+          # Fetch develop branch to compare
+          git fetch origin develop:develop || (echo "Develop branch doesn't exist yet, creating it..." && git branch develop && git push origin develop)
+
+          # Check if there are commits between branches
+          COMMITS_COUNT=$(git rev-list --count develop.."$BRANCH_NAME")
+
+          if [ "$COMMITS_COUNT" -gt 0 ]; then
+            PR_EXISTS=$(gh pr list --head "$BRANCH_NAME" --base develop --json number | jq 'length > 0')
+
+            if [ "$PR_EXISTS" = "false" ]; then
+              gh pr create \
+                --base develop \
+                --head "$BRANCH_NAME" \
+                --title "Automated PR: $BRANCH_NAME -> develop" \
+                --body "This PR was automatically created by the CI pipeline after successful build and tests."
+            else
+              echo "Pull Request already exists."
+            fi
           else
-            echo "Pull Request already exists."
+            echo "No new commits to merge into develop."
           fi

@@ -1,3 +1,6 @@
+# NOTE: Ensure "Allow GitHub Actions to create and approve pull requests"
+# is enabled in Settings > Actions > General.
+
 name: CI Develop
 
 on:

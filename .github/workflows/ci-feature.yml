@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Environment
         # Placeholder for environment setup (e.g., actions/setup-python@v5)
@@ -40,6 +42,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
@@ -48,8 +52,11 @@ jobs:
         run: |
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
 
-          # Fetch develop branch to compare
-          git fetch origin develop:develop || (echo "Develop branch doesn't exist yet, creating it..." && git branch develop && git push origin develop)
+          # Ensure main is available
+          git fetch origin main:main || true
+
+          # Fetch develop branch to compare, or create it from main if it doesn't exist
+          git fetch origin develop:develop || (echo "Develop branch doesn't exist yet, creating it from main..." && git checkout -b develop origin/main && git push origin develop)
 
           # Check if there are commits between branches
           COMMITS_COUNT=$(git rev-list --count develop.."$BRANCH_NAME")

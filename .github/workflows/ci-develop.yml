@@ -85,13 +85,20 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
 
-          # Create release branch from main
+          # Ensure main and develop are up to date
           git fetch origin main:main
-          git checkout main
-          git checkout -b "$RELEASE_BRANCH"
-          git push origin "$RELEASE_BRANCH"
+          git fetch origin develop:develop
 
-          # Check if there are commits to merge
+          # Create release branch from main if it doesn't exist
+          if ! git rev-parse --verify "origin/$RELEASE_BRANCH" >/dev/null 2>&1; then
+            git checkout main
+            git checkout -b "$RELEASE_BRANCH"
+            git push origin "$RELEASE_BRANCH"
+          else
+            git fetch origin "$RELEASE_BRANCH":"$RELEASE_BRANCH"
+          fi
+
+          # Check if there are commits to merge from develop to release
           COMMITS_COUNT=$(git rev-list --count "$RELEASE_BRANCH"..develop)
 
           if [ "$COMMITS_COUNT" -gt 0 ]; then

@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Environment
         run: echo "Setting up environment..."
@@ -38,6 +40,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
@@ -46,15 +50,25 @@ jobs:
         run: |
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
 
-          # Only create PR if it doesn't already exist
-          PR_EXISTS=$(gh pr list --head "$BRANCH_NAME" --base main --json number | jq 'length > 0')
+          # Fetch main to compare
+          git fetch origin main:main
 
-          if [ "$PR_EXISTS" = "false" ]; then
-            gh pr create \
-              --base main \
-              --head "$BRANCH_NAME" \
-              --title "Release: $BRANCH_NAME" \
-              --body "Automated release PR from $BRANCH_NAME to main."
+          # Check if there are commits to merge
+          COMMITS_COUNT=$(git rev-list --count main.."$BRANCH_NAME")
+
+          if [ "$COMMITS_COUNT" -gt 0 ]; then
+            # Only create PR if it doesn't already exist
+            PR_EXISTS=$(gh pr list --head "$BRANCH_NAME" --base main --json number | jq 'length > 0')
+
+            if [ "$PR_EXISTS" = "false" ]; then
+              gh pr create \
+                --base main \
+                --head "$BRANCH_NAME" \
+                --title "Release: $BRANCH_NAME" \
+                --body "Automated release PR from $BRANCH_NAME to main."
+            else
+              echo "Pull Request to main already exists."
+            fi
           else
-            echo "Pull Request to main already exists."
+            echo "No new commits to merge into main."
           fi

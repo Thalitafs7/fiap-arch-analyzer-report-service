@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Environment
         # Placeholder for environment setup (e.g., actions/setup-python@v5)
@@ -40,6 +42,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
@@ -47,14 +51,28 @@ jobs:
       - name: Create Pull Request to develop
         run: |
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          PR_EXISTS=$(gh pr list --head "$BRANCH_NAME" --base develop --json number | jq 'length > 0')
 
-          if [ "$PR_EXISTS" = "false" ]; then
-            gh pr create \
-              --base develop \
-              --head "$BRANCH_NAME" \
-              --title "Automated PR: $BRANCH_NAME -> develop" \
-              --body "This PR was automatically created by the CI pipeline after successful build and tests."
+          # Ensure main is available
+          git fetch origin main:main || true
+
+          # Fetch develop branch to compare, or create it from main if it doesn't exist
+          git fetch origin develop:develop || (echo "Develop branch doesn't exist yet, creating it from main..." && git checkout -b develop origin/main && git push origin develop)
+
+          # Check if there are commits between branches
+          COMMITS_COUNT=$(git rev-list --count develop.."$BRANCH_NAME")
+
+          if [ "$COMMITS_COUNT" -gt 0 ]; then
+            PR_EXISTS=$(gh pr list --head "$BRANCH_NAME" --base develop --json number | jq 'length > 0')
+
+            if [ "$PR_EXISTS" = "false" ]; then
+              gh pr create \
+                --base develop \
+                --head "$BRANCH_NAME" \
+                --title "Automated PR: $BRANCH_NAME -> develop" \
+                --body "This PR was automatically created by the CI pipeline after successful build and tests."
+            else
+              echo "Pull Request already exists."
+            fi
           else
-            echo "Pull Request already exists."
+            echo "No new commits to merge into develop."
           fi

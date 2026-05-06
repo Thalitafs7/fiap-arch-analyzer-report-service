@@ -1,0 +1,229 @@
+================================================================================
+  HACKATHON-IADT - LAUNCHER (iniciar-aplicacao.exe)
+  Documento de uso, funcionamento e pre-requisitos
+================================================================================
+
+--------------------------------------------------------------------------------
+1. OBJETIVO DO EXECUTAVEL
+--------------------------------------------------------------------------------
+
+O arquivo "iniciar-aplicacao.exe" eh um inicializador (launcher) com 1 clique
+para o projeto hackathon-iadt. Ao executa-lo, ele:
+
+  - Verifica se o ambiente Windows tem o Docker instalado e rodando.
+  - Cria o arquivo .env (a partir de .env.example) caso ainda nao exista.
+  - Baixa as imagens base, faz o build das imagens da aplicacao.
+  - Sobe TODOS os containers definidos em docker-compose.yml (Redis, RabbitMQ,
+    pgvector, ia-service, celery-worker, report-api, streamlit-app).
+  - Aguarda a aplicacao ficar pronta e abre o navegador apontando para a UI
+    em http://localhost:8501.
+
+Em outras palavras: o usuario nao precisa abrir terminal nenhum. Basta dar
+duplo clique no .exe e esperar.
+
+Arquivos entregues nesta pasta launcher/:
+
+  - iniciar-aplicacao.exe   -> binario clicavel (este eh o que voce executa).
+  - iniciar-aplicacao.ps1   -> codigo-fonte PowerShell que originou o .exe.
+  - iniciar-aplicacao.bat   -> fallback caso o antivirus bloqueie o .exe.
+  - LEIA-ME.txt             -> este documento.
+
+--------------------------------------------------------------------------------
+2. PRE-REQUISITOS QUE PRECISAM JA ESTAR INSTALADOS NA MAQUINA
+--------------------------------------------------------------------------------
+
+Estes itens NAO sao instalados pelo .exe. O usuario deve garantir que estejam
+prontos antes de clicar:
+
+  [Obrigatorio]
+  a) Sistema Windows 10 ou Windows 11 64 bits.
+  b) Docker Desktop instalado e com a feature WSL 2 habilitada.
+       Download: https://www.docker.com/products/docker-desktop/
+       Apos instalar, reinicie a maquina pelo menos uma vez.
+  c) Conexao com a internet (para baixar as imagens Docker na primeira execucao
+     e instalar as dependencias dentro dos containers).
+  d) Pelo menos 8 GB de RAM livres (idealmente 16 GB) e ~10 GB livres em disco.
+  e) Portas livres no host: 5432, 5672, 6379, 8000, 8001, 8501, 15672.
+       Se algum desses servicos ja estiver rodando localmente (ex.: Postgres na
+       5432), pare-o antes de executar o launcher.
+
+  [Opcional, mas recomendado]
+  f) PowerShell 5.1 (ja vem com o Windows) ou PowerShell 7+.
+  g) Permissao de admin no Windows (somente para instalar o Docker; o launcher
+     em si NAO exige privilegios de administrador).
+
+  [Configuracao da aplicacao]
+  h) Chaves de API: na primeira execucao o launcher cria um arquivo .env na
+     raiz do projeto a partir do .env.example. Edite-o e preencha os valores
+     antes de usar funcionalidades de IA:
+       - ANTHROPIC_API_KEY  (obrigatorio para o agente Claude)
+       - OPENAI_API_KEY     (obrigatorio para os embeddings do RAG)
+       - AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (apenas se for usar SQS)
+       - SQS_QUEUE_URL      (apenas se for consumir mensagens do SOAT)
+
+--------------------------------------------------------------------------------
+3. COMO USAR
+--------------------------------------------------------------------------------
+
+  1. Garanta os pre-requisitos da secao 2.
+  2. Coloque a pasta "launcher/" dentro do projeto hackathon-iadt (ela ja vem
+     posicionada por padrao).
+  3. De duplo clique em iniciar-aplicacao.exe.
+       - Se o Windows SmartScreen aparecer ("Nao executar"), clique em
+         "Mais informacoes" -> "Executar assim mesmo".
+       - Se o antivirus bloquear o .exe, use o iniciar-aplicacao.bat.
+  4. Aguarde. Na primeira vez pode levar 5-10 min (build das imagens).
+  5. O navegador abre automaticamente em http://localhost:8501.
+
+Para parar tudo depois:
+       Abra um terminal na raiz do projeto e rode:  docker compose down
+
+--------------------------------------------------------------------------------
+4. O QUE O EXECUTAVEL FAZ POR DENTRO (PASSO A PASSO E COMANDOS)
+--------------------------------------------------------------------------------
+
+O .exe eh apenas um empacotamento do script PowerShell iniciar-aplicacao.ps1
+(usando o modulo ps2exe). A logica eh exatamente a descrita abaixo.
+
+PASSO 1/6 - Localiza a raiz do projeto
+   - Detecta a pasta onde o .exe esta rodando e sobe um nivel.
+   - Verifica se existe docker-compose.yml nessa pasta.
+   - Por que: sem o compose, nao da pra subir nada.
+
+PASSO 2/6 - Verifica se o Docker esta instalado
+   Comando: Get-Command docker
+       O que faz: procura o executavel "docker" no PATH do Windows.
+       Para que serve: garantir que o Docker Desktop esta instalado. Se nao
+       estiver, o launcher mostra a URL de download e encerra.
+
+PASSO 3/6 - Verifica se o Docker Engine esta rodando
+   Comando: docker info --format "{{.ServerVersion}}"
+       O que faz: pergunta ao Docker Daemon a versao do servidor.
+       Para que serve: confirma que o Docker Desktop esta de fato em execucao
+       (nao basta ele estar instalado; o servico precisa estar ativo).
+
+   Se o engine nao responder, o launcher inicia o Docker Desktop:
+   Comando: Start-Process "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
+       O que faz: abre o Docker Desktop como qualquer outro programa Windows.
+       Em seguida, faz polling de ate 120 segundos chamando "docker info"
+       a cada 3 segundos ate o engine responder.
+
+PASSO 4/6 - Confirma que o Docker Compose v2 esta disponivel
+   Comando: docker compose version
+       O que faz: verifica se a sintaxe nova "docker compose" (sem hifen) esta
+       disponivel no cliente.
+       Para que serve: o projeto usa recursos de compose v2 (depends_on com
+       healthcheck). Versoes antigas nao funcionam.
+
+PASSO 5/6 - Prepara o arquivo .env
+   Acao: Copy-Item .env.example .env  (se .env nao existir).
+       O que faz: gera um .env padrao com os mesmos placeholders do exemplo.
+       Para que serve: o docker-compose.yml usa varias variaveis (chaves de
+       API, credenciais Postgres, RabbitMQ, AWS, etc.) e exige um .env presente
+       para evitar warnings e para poder injetar segredos.
+   IMPORTANTE: o launcher NAO preenche chaves secretas para voce. Apos a
+   primeira execucao, abra o .env na raiz do projeto e coloque os valores
+   reais de ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.
+
+PASSO 6/6 - Sobe os containers
+   Comando: docker compose pull
+       O que faz: baixa as imagens base prontas que estao no Docker Hub
+       (redis:7-alpine, rabbitmq:3.13-management-alpine, pgvector/pgvector:pg16).
+       Para que serve: economiza tempo no build seguinte e garante que as
+       imagens base estao atualizadas.
+
+   Comando: docker compose build
+       O que faz: faz o build das imagens locais cujos servicos tem "build:"
+       no compose: ia-service, celery-worker (mesma imagem do ia-service),
+       report-api e streamlit-app. Cada um tem seu Dockerfile que instala
+       requirements.txt via pip.
+       Para que serve: garantir que o codigo Python local entra dentro das
+       imagens, junto das dependencias.
+
+   Comando: docker compose up -d
+       O que faz: sobe TODOS os servicos do compose em modo detached
+       (background). O Docker respeita os depends_on com healthcheck:
+         - pgvector, redis e rabbitmq sobem primeiro;
+         - ia-service e celery-worker so iniciam quando os 3 acima estao
+           saudaveis;
+         - streamlit-app espera ia-service e report-api.
+       Para que serve: este eh o comando que de fato "instala e roda" toda
+       a aplicacao.
+
+   Aguarda a aplicacao responder:
+   Comando: Invoke-WebRequest http://localhost:8501 -UseBasicParsing
+       O que faz: faz HTTP GET na pagina inicial do Streamlit.
+       Para que serve: confirmar que o front-end ja terminou de inicializar
+       (pode levar uns 30s mesmo apos os containers estarem "up").
+       O launcher tenta por ate 180 segundos.
+
+   Abre o navegador:
+   Comando: Start-Process "http://localhost:8501"
+       O que faz: abre o navegador padrao do usuario na URL do Streamlit.
+
+--------------------------------------------------------------------------------
+5. SERVICOS QUE FICAM DISPONIVEIS APOS O LAUNCHER
+--------------------------------------------------------------------------------
+
+   - Streamlit (UI principal) ......... http://localhost:8501
+   - IA Service (FastAPI + docs) ...... http://localhost:8000/docs
+   - Report API (FastAPI + docs) ...... http://localhost:8001/docs
+   - RabbitMQ Management UI ........... http://localhost:15672
+        usuario: hackathon
+        senha:   hackathon123
+   - Postgres com pgvector ............ localhost:5432
+        DB:      hackathon_db
+        usuario: hackathon
+        senha:   hackathon123
+   - Redis ............................ localhost:6379
+
+--------------------------------------------------------------------------------
+6. SOLUCAO DE PROBLEMAS COMUNS
+--------------------------------------------------------------------------------
+
+Sintoma: "Docker nao encontrado no PATH"
+   Causa: Docker Desktop nao foi instalado ou ainda nao foi reiniciado.
+   Acao:  Instale Docker Desktop, reinicie a maquina, rode o launcher de novo.
+
+Sintoma: "Docker Engine nao subiu a tempo"
+   Causa: Docker Desktop demorou mais de 2 minutos para iniciar (maquina
+          lenta ou WSL 2 nao habilitado).
+   Acao:  Abra o Docker Desktop manualmente, espere o icone na bandeja ficar
+          verde, e rode o launcher novamente.
+
+Sintoma: SmartScreen avisa "Editor desconhecido"
+   Causa: O .exe foi gerado por ps2exe e nao tem assinatura digital.
+   Acao:  Clique em "Mais informacoes" -> "Executar assim mesmo". Ou rode o
+          fallback iniciar-aplicacao.bat.
+
+Sintoma: "port is already allocated" no docker compose
+   Causa: Outra aplicacao ja usa uma das portas (5432, 6379, 8000, 8001,
+          8501, 5672, 15672).
+   Acao:  Pare o servico que ocupa a porta (ex.: Postgres local) e rode
+          novamente. Para descobrir quem esta usando a porta:
+              netstat -ano | findstr :5432
+
+Sintoma: Streamlit nao abre, mas containers estao up
+   Causa: Streamlit demora para baixar dependencias na primeira inicializacao.
+   Acao:  Rode no terminal:  docker compose logs -f streamlit-app
+
+Sintoma: Erro de autenticacao no agente Claude
+   Causa: O .env esta com a chave placeholder (sk-ant-...).
+   Acao:  Edite o .env na raiz do projeto, coloque a chave real, e reinicie
+          os containers:  docker compose restart ia-service celery-worker
+
+--------------------------------------------------------------------------------
+7. COMANDOS UTEIS PARA O DIA A DIA
+--------------------------------------------------------------------------------
+
+   Ver status dos containers:        docker compose ps
+   Ver logs ao vivo:                 docker compose logs -f
+   Ver logs de um servico:           docker compose logs -f ia-service
+   Reiniciar um servico:             docker compose restart streamlit-app
+   Parar tudo (mantendo volumes):    docker compose down
+   Parar e apagar volumes/dados:     docker compose down -v
+   Forcar rebuild:                   docker compose build --no-cache
+
+================================================================================
+  Fim do documento.
+================================================================================

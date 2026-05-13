@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: arch-analyzer-ia
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - configmap.yaml
+  - aws-secret-template.yaml
+  # namespace.yaml omitted — arch-analyzer-ia is bootstrapped by the infra repo
+  # (modules/k8s-config) and must not be redefined here.
+
+commonLabels:
+  app.kubernetes.io/part-of: arch-analyzer
+
+images:
+  - name: arch-analyzer-report
+    # newName and newTag are substituted by the Deployment_Orchestrator at deploy time:
+    #   IMAGE_TAG  — git SHA or semver tag passed via --set or envsubst
+    #   ECR_REGISTRY — read from infra-outputs ConfigMap / Terraform output
+    newName: ${ECR_REGISTRY}/arch-analyzer-report
+    newTag: ${IMAGE_TAG}

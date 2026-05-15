@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path 'c:\\\\Users\\\\bruna\\\\OneDrive\\\\Documentos\\\\Bruna\\\\Pos-graduacao\\\\arquitetura\\\\fiap-arch-analyzer-report-service' -Recurse -Force)",
+      "Bash(Select-Object -Property FullName, PSIsContainer)",
+      "Bash(Sort-Object FullName)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(Remove-Item -Path \"c:\\\\Users\\\\bruna\\\\OneDrive\\\\Documentos\\\\Bruna\\\\Pos-graduacao\\\\arquitetura\\\\fiap-arch-analyzer-report-service\\\\app\\\\db\" -Recurse -Force)",
+      "PowerShell(Remove-Item -Path \"c:\\\\Users\\\\bruna\\\\OneDrive\\\\Documentos\\\\Bruna\\\\Pos-graduacao\\\\arquitetura\\\\fiap-arch-analyzer-report-service\\\\app\\\\db\" -Recurse -Force -Confirm:$false)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\bruna\\\\OneDrive\\\\Documentos\\\\Bruna\\\\Pos-graduacao\\\\arquitetura\\\\fiap-arch-analyzer-report-service\\\\app\" -Recurse -File | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Replace\\(\"c:\\\\Users\\\\bruna\\\\OneDrive\\\\Documentos\\\\Bruna\\\\Pos-graduacao\\\\arquitetura\\\\fiap-arch-analyzer-report-service\\\\\", \"\"\\) })"
+    ]
+  }
+}

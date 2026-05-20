@@ -3,7 +3,7 @@
 API REST read-only para consulta dos relatórios de análise arquitetural gerados pelo `ia-service`. Integra-se ao API Gateway e ao `streamlit-app` do projeto FIAP Hackathon.
 
 ---
-
+ 
 ## Índice
  
 1. [Descrição do Problema](#1-descrição-do-problema)

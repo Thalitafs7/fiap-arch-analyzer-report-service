@@ -309,3 +309,250 @@ Com a API rodando, acesse:
 
 - Swagger UI: `http://localhost:8001/docs`
 - ReDoc: `http://localhost:8001/redoc`
+
+---
+
+## 5. Diagramas de Arquitetura
+
+Diagramas Mermaid gerados por análise reversa do código-fonte. Renderizam nativamente no GitHub.
+
+### 5.1 Arquitetura Interna — Camadas Hexagonais
+
+Mostra as camadas Clean Architecture e direção de dependência.
+
+```mermaid
+graph TD
+    subgraph "Infra Layer"
+        MAIN["app.infra.main.app"]
+        SERVER["FastAPI Server"]
+        ROUTES_R["report_routes"]
+        ROUTES_H["health_routes"]
+        DB_CONN["DB Connection - SQLAlchemy"]
+    end
+
+    subgraph "Adapters Layer"
+        CTRL["ReportController"]
+        REPO_A["SqlAlchemyAnalysisRepository"]
+        REPO_R["SqlAlchemyReportRepository"]
+        MAPPER_A["AnalysisMapper"]
+        MAPPER_R["ReportMapper"]
+        PRESENTER["ReportPresenter"]
+    end
+
+    subgraph "Application Layer"
+        UC_GET["GetReportUseCase"]
+        UC_LIST["ListReportsUseCase"]
+        PORT_IN_GET["IGetReportUseCase"]
+        PORT_IN_LIST["IListReportsUseCase"]
+        PORT_OUT_A["IAnalysisRepository"]
+        PORT_OUT_R["IReportRepository"]
+        DTO_GET["GetReportDTO"]
+        DTO_LIST["ListReportsDTO"]
+    end
+
+    subgraph "Domain Layer"
+        ENT_A["Analysis Entity"]
+        ENT_R["Report Entity"]
+        VO_ID["AnalysisId"]
+        VO_STATUS["AnalysisStatus"]
+        EXC["AnalysisNotFoundError"]
+    end
+
+    MAIN --> SERVER
+    SERVER --> ROUTES_R
+    SERVER --> ROUTES_H
+    ROUTES_R --> CTRL
+    CTRL --> UC_GET
+    CTRL --> UC_LIST
+    UC_GET -.->|implements| PORT_IN_GET
+    UC_LIST -.->|implements| PORT_IN_LIST
+    UC_GET --> PORT_OUT_A
+    UC_GET --> PORT_OUT_R
+    UC_LIST --> PORT_OUT_R
+    REPO_A -.->|implements| PORT_OUT_A
+    REPO_R -.->|implements| PORT_OUT_R
+    REPO_A --> MAPPER_A
+    REPO_R --> MAPPER_R
+    MAPPER_A --> ENT_A
+    MAPPER_R --> ENT_R
+    ENT_A --> VO_ID
+    ENT_A --> VO_STATUS
+    UC_GET --> EXC
+    ROUTES_R --> PRESENTER
+    REPO_A --> DB_CONN
+    REPO_R --> DB_CONN
+```
+
+### 5.2 Fluxo de Request — GET /reports/{analysis_id}
+
+Ciclo completo com caminhos de sucesso e falha.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant FastAPI as FastAPI Router
+    participant Ctrl as ReportController
+    participant UC as GetReportUseCase
+    participant ARepo as AnalysisRepository
+    participant RRepo as ReportRepository
+    participant DB as PostgreSQL pgvector
+    participant Presenter as ReportPresenter
+
+    Client->>FastAPI: GET /reports/{analysis_id}
+    FastAPI->>Ctrl: handle_get_report(id)
+    Ctrl->>UC: execute(GetReportInputDTO)
+    UC->>ARepo: find_by_id(analysis_id)
+    ARepo->>DB: SELECT * FROM analyses WHERE id = :id
+    alt Analysis not found
+        DB-->>ARepo: null
+        ARepo-->>UC: None
+        UC-->>Ctrl: raise AnalysisNotFoundError
+        Ctrl-->>FastAPI: HTTPException 404
+        FastAPI-->>Client: 404 Not Found
+    else Analysis found
+        DB-->>ARepo: row
+        ARepo-->>UC: Analysis entity
+        UC->>RRepo: find_by_analysis_id(id)
+        RRepo->>DB: SELECT * FROM reports WHERE analysis_id = :id
+        DB-->>RRepo: row or null
+        RRepo-->>UC: Report entity or None
+        UC-->>Ctrl: GetReportOutputDTO
+        Ctrl->>Presenter: to_get_response(output)
+        Presenter-->>FastAPI: JSON dict
+        FastAPI-->>Client: 200 OK
+    end
+```
+
+### 5.3 Visão Macro — Contexto no Ecossistema Distribuído
+
+Posição do report-service no sistema ArchAnalyzer (inferido do schema e referências).
+
+```mermaid
+graph LR
+    subgraph "Client"
+        USER["User / API Gateway"]
+    end
+
+    subgraph "Upstream Services"
+        UPLOAD["Upload Service"]
+        EXTRACT["Extraction Agent"]
+        REPORT_AGENT["Report Agent"]
+        QA["QA Validator"]
+    end
+
+    subgraph "Infrastructure"
+        S3["AWS S3"]
+        SQS["AWS SQS"]
+        PG["PostgreSQL + pgvector"]
+    end
+
+    subgraph "Report Service"
+        API["FastAPI :8001"]
+    end
+
+    USER -->|upload diagram| UPLOAD
+    UPLOAD -->|store file| S3
+    UPLOAD -->|enqueue| SQS
+    SQS -->|consume| EXTRACT
+    EXTRACT -->|write extraction_results| PG
+    EXTRACT -->|trigger| REPORT_AGENT
+    REPORT_AGENT -->|write reports| PG
+    REPORT_AGENT -->|trigger| QA
+    QA -->|update qa fields| PG
+    USER -->|GET /reports| API
+    API -->|read| PG
+```
+
+### 5.4 Schema do Banco — Diagrama ER
+
+```mermaid
+erDiagram
+    analyses {
+        UUID id PK
+        VARCHAR status
+        VARCHAR file_name
+        VARCHAR file_type
+        VARCHAR s3_key
+        VARCHAR sqs_message_id
+        TEXT error_message
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    extraction_results {
+        UUID id PK
+        UUID analysis_id FK
+        JSONB components
+        JSONB relationships
+        JSONB patterns
+        TEXT raw_description
+        TIMESTAMPTZ created_at
+    }
+
+    reports {
+        UUID id PK
+        UUID analysis_id FK
+        JSONB components_identified
+        JSONB architectural_risks
+        JSONB recommendations
+        TEXT executive_summary
+        BOOLEAN rag_used
+        BOOLEAN qa_is_valid
+        FLOAT qa_completeness_score
+        JSONB qa_issues_found
+        TEXT qa_quality_notes
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    analyses ||--o{ extraction_results : has
+    analyses ||--o{ reports : has
+```
+
+### 5.5 Máquina de Estados — Analysis
+
+```mermaid
+stateDiagram-v2
+    [*] --> recebido: Upload received
+    recebido --> em_processamento: Agent picks up
+    em_processamento --> analisado: Success
+    em_processamento --> erro: Failure
+    erro --> [*]
+    analisado --> [*]
+```
+
+### 5.6 Pipeline CI/CD
+
+```mermaid
+flowchart TD
+    subgraph "Feature Branch"
+        F1["Push to feature/*"]
+        F2["CI: lint + test"]
+    end
+
+    subgraph "Develop Branch"
+        D1["Push to develop"]
+        D2["Run tests"]
+        D3["Calculate semver"]
+        D4["Create release branch + PR"]
+    end
+
+    subgraph "Release Branch"
+        R1["PR merged to release/*"]
+        R2["CI: validate"]
+    end
+
+    subgraph "Main Branch"
+        M1["Push to main"]
+        M2["Terraform init"]
+        M3["Terraform apply"]
+        M4["Deploy to AWS"]
+    end
+
+    F1 --> F2
+    F2 -->|merge| D1
+    D1 --> D2 --> D3 --> D4
+    D4 --> R1 --> R2
+    R2 -->|merge to main| M1
+    M1 --> M2 --> M3 --> M4
+```

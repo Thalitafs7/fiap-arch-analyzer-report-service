@@ -31,7 +31,7 @@ jobs:
       - name: Create Pull Request to Develop
         run: |
           # Fetch develop branch to ensure common history
-          git fetch origin develop:develop
+          git fetch origin develop
 
           # Check if PR already exists
           PR_EXISTS=$(gh pr list --head "${{ github.ref_name }}" --base develop --json number | jq 'length > 0')

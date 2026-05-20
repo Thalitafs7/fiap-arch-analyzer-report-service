@@ -1,4 +1,4 @@
-# report-api — API de Consulta de Relatórios
+# report-api — API de Consulta de Relatórios 
 
 API REST read-only para consulta dos relatórios de análise arquitetural gerados pelo `ia-service`. Integra-se ao API Gateway e ao `streamlit-app` do projeto FIAP Hackathon.
 

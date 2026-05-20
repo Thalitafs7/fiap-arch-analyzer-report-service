@@ -5,7 +5,7 @@ API REST read-only para consulta dos relatórios de análise arquitetural gerado
 ---
 
 ## Índice
-
+ 
 1. [Descrição do Problema](#1-descrição-do-problema)
 2. [Arquitetura Proposta](#2-arquitetura-proposta)
 3. [Fluxo da Solução](#3-fluxo-da-solução)

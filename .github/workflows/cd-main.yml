@@ -27,7 +27,10 @@ jobs:
           terraform_version: "1.5.0"
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -backend=false
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: report-config
+  namespace: arch-analyzer-ia
+  labels:
+    app.kubernetes.io/name: report-service
+    app.kubernetes.io/part-of: arch-analyzer
+    app.kubernetes.io/component: api
+data:
+  # Runtime environment
+  ASPNETCORE_ENVIRONMENT: "Production"
+
+  # Pagination defaults
+  Reports__DefaultPageSize: "20"
+  Reports__MaxPageSize: "100"
+
+  # Formatter flags
+  Reports__IncludeMetadata: "true"
+  Reports__DateFormat: "ISO8601"
+
+  # Logging
+  Logging__LogLevel__Default: "Information"
+  Logging__LogLevel__Microsoft.AspNetCore: "Warning"
+
+  # NOTE: AWS Terraform outputs (DB_ADDRESS, DB_PORT, ECR_REGISTRY, etc.)
+  # are consumed via envFrom: configMapRef: infra-outputs — never inlined here.

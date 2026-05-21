@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: report-service
+  namespace: arch-analyzer-ia
+  labels:
+    app.kubernetes.io/name: report-service
+    app.kubernetes.io/part-of: arch-analyzer
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: report-service
+  template:
+    metadata:
+      labels:
+        app: report-service
+        app.kubernetes.io/name: report-service
+        app.kubernetes.io/part-of: arch-analyzer
+        app.kubernetes.io/component: api
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        fsGroup: 10000
+
+      volumes:
+        - name: secrets-vol
+          emptyDir:
+            medium: Memory
+
+      initContainers:
+        - name: secrets-sync
+          image: amazon/aws-cli:2.15.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              # Fetch DB connection string (read-only user)
+              DB_SECRET=$(aws secretsmanager get-secret-value \
+                --secret-id arch-analyzer/db/report \
+                --query SecretString \
+                --output text)
+              echo "$DB_SECRET" > /secrets/db.json
+
+              # Fetch JWT signing key
+              JWT_SECRET=$(aws secretsmanager get-secret-value \
+                --secret-id arch-analyzer/auth/jwt \
+                --query SecretString \
+                --output text)
+              echo "$JWT_SECRET" > /secrets/jwt.json
+
+              # Write env-compatible secret file consumed by report-secret
+              DB_CONN=$(echo "$DB_SECRET" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('connection_string',''))" 2>/dev/null || echo "$DB_SECRET")
+              JWT_KEY=$(echo "$JWT_SECRET" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('key',''))" 2>/dev/null || echo "$JWT_SECRET")
+
+              printf 'ConnectionStrings__DefaultConnection=%s\nJwt__Key=%s\n' "$DB_CONN" "$JWT_KEY" > /secrets/report-secret.env
+          volumeMounts:
+            - name: secrets-vol
+              mountPath: /secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+      containers:
+        - name: report-service
+          image: arch-analyzer-report:latest
+          # Image resolved at deploy time via kustomization.yaml images override:
+          #   newName: ${ECR_REGISTRY}/arch-analyzer-report
+          #   newTag:  ${IMAGE_TAG}
+          ports:
+            - containerPort: 8001
+
+          envFrom:
+            - configMapRef:
+                name: infra-outputs # AWS_REGION, DB_ADDRESS, DB_PORT, ECR_REGISTRY, ...
+            - configMapRef:
+                name: report-config # ASPNETCORE_ENVIRONMENT, pagination defaults, etc.
+            - secretRef:
+                name: report-secret # ConnectionStrings__DefaultConnection, Jwt__Key
+
+          volumeMounts:
+            - name: secrets-vol
+              mountPath: /secrets
+              readOnly: true
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 5

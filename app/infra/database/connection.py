@@ -1,12 +1,13 @@
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
 import os
 
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+
 _engine = None
-_SessionLocal = None
+_session_factory = None
 
 
-def _get_db_url() -> str:
+def _build_db_url() -> str:
     return (
         f"postgresql+psycopg2://{os.environ.get('POSTGRES_USER', 'hackathon')}:"
         f"{os.environ.get('POSTGRES_PASSWORD', 'hackathon123')}@"
@@ -19,20 +20,27 @@ def _get_db_url() -> str:
 def get_engine():
     global _engine
     if _engine is None:
-        _engine = create_engine(_get_db_url(), pool_pre_ping=True, pool_size=3)
+        _engine = create_engine(
+            _build_db_url(),
+            pool_pre_ping=True,
+            pool_size=3,
+        )
     return _engine
 
 
 def get_session_factory():
-    global _SessionLocal
-    if _SessionLocal is None:
-        _SessionLocal = sessionmaker(bind=get_engine(), autocommit=False, autoflush=False)
-    return _SessionLocal
+    global _session_factory
+    if _session_factory is None:
+        _session_factory = sessionmaker(
+            bind=get_engine(),
+            autocommit=False,
+            autoflush=False,
+        )
+    return _session_factory
 
 
 def get_db():
-    SessionLocal = get_session_factory()
-    db = SessionLocal()
+    db = get_session_factory()()
     try:
         yield db
     finally:
